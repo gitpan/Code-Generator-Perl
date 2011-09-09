@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Code-Generator-Perl
-version:            0.02
+version:            0.03
 abstract:           Perl module for generating perl modules
 author:
     - nazri <nazri@>
@@ -12,6 +12,7 @@ build_requires:
     ExtUtils::MakeMaker:  0
 requires:
     Data::Dumper:  2.121
+    File::Path:    2.07
     File::Spec:    3.29
 no_index:
     directory:

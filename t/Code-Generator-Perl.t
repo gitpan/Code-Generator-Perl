@@ -31,44 +31,51 @@ my $generator = new Code::Generator::Perl(
 
 my @fib_sequence = ( 1, 1, 2, 3, 5, 8 );
 
-$package_name = 'Fibonacci';
+$package_name = 'Fibonacci';#{:
 ok($generator
 	->new_package($package_name)
 	->add_comment('Single digit fibonacci numbers')
 	->add('sequence' => \@fib_sequence)
-	->create(), 'Generate toplevel module');
+	->create(), "Generate $package_name");
 use_ok($package_name);
 
 # is_deeply is enough testing but we want to avoid the "is used only once"
 # warning hence the length test:
 ok(scalar @fib_sequence == scalar @{$Fibonacci::sequence},
 	'Same lengths of Fibonacci sequences');
-is_deeply(\@fib_sequence, $Fibonacci::sequence, 'Fibonacci sequence matches');
+is_deeply(\@fib_sequence, $Fibonacci::sequence,
+	'Fibonacci sequence matches');
+#:}
 
+$package_name = 'Number::Single::Digit';#{:
 my @single_digit_numbers = ( 1..9 );
 ok($generator
-	->new_package('Number::Single::Digit')
+	->new_package($package_name)
 	->add(single_digits => \@single_digit_numbers)
 	->create(),
-	'Generate nested module');
+	"Generate $package_name");
 
-use_ok('Number::Single::Digit');
-ok(scalar @single_digit_numbers == scalar @{$Number::Single::Digit::single_digits},
+use_ok($package_name);
+ok(scalar @single_digit_numbers
+    == scalar @{$Number::Single::Digit::single_digits},
 	'Same lengths of single digit numbers');
 is_deeply(\@single_digit_numbers, $Number::Single::Digit::single_digits,
 		'Single digit numbers matches');
+#:}
 
+$package_name = 'Broken';#{:
 diag('You can safely ignore the following error message:');
 ok(!$generator
-	->new_package('Broken')
+	->new_package($package_name)
 	->add('broken var name' => 42)
 	->create(),
 	'Barf on error');
 diag('You can now go back to not-ignoring any error messages from here onwards.');
+#:}
 
 my $wheel_count_for = { car => 4, bicycle => 2, };
 
-$package_name = 'CorrectOrdering';
+$package_name = 'CorrectOrdering';#{:
 ok($generator
 	->new_package($package_name)
 	->add(wheel_count_for => $wheel_count_for, { sortkeys => 1, })
@@ -91,8 +98,9 @@ our \$wheel_count_for = {
 1;
 EOT
 ok (compare_with_file($expected, "t/tmp/$package_name.pm"), 'Correct ordering');
+#:}
 
-$package_name = 'UseNone';
+$package_name = 'UseNone';#{:
 ok($generator
 	->new_package(
 		$package_name,
@@ -116,8 +124,9 @@ our \$wheel_count_for = {
 1;
 EOT
 ok (compare_with_file($expected, "t/tmp/$package_name.pm"), 'Use none');
+#:}
 
-$package_name = 'NewGeneratedBy';
+$package_name = 'NewGeneratedBy';#{:
 ok($generator
 	->new_package(
 		$package_name,
@@ -141,9 +150,11 @@ our \$wheel_count_for = {
 
 1;
 EOT
-ok (compare_with_file($expected, "t/tmp/$package_name.pm"), "Generate $package_name");
+ok (compare_with_file($expected, "t/tmp/$package_name.pm"),
+	"Generate $package_name");
+#:}
 
-$package_name = 'PackageReadonly';
+$package_name = 'PackageReadonly';#{:
 ok($generator
 	->new_package(
 		$package_name,
@@ -171,9 +182,11 @@ Readonly::Scalar our \$pi => '3.14';
 
 1;
 EOT
-ok (compare_with_file($expected, "t/tmp/$package_name.pm"), "Generate $package_name");
+ok (compare_with_file($expected, "t/tmp/$package_name.pm"),
+	"Generate $package_name");
+#:}
 
-$package_name = 'PackageNoReadonly';
+$package_name = 'PackageNoReadonly';#{:
 ok($generator
 	->new_package($package_name)
 	->add(wheel_count_for => $wheel_count_for, { sortkeys => 1, })
@@ -198,9 +211,11 @@ our \$pi = '3.14';
 
 1;
 EOT
-ok (compare_with_file($expected, "t/tmp/$package_name.pm"), "Generate $package_name");
+ok (compare_with_file($expected, "t/tmp/$package_name.pm"),
+	"Generate $package_name");
+#:}
 
-$package_name = 'VariableReadonly';
+$package_name = 'VariableReadonly';#{:
 ok($generator
 	->new_package($package_name)
 	->add_comment('This should be readonly')
@@ -234,10 +249,12 @@ our \$pi = '3.14';
 
 1;
 EOT
-ok (compare_with_file($expected, "t/tmp/$package_name.pm"), "Generate $package_name");
+ok (compare_with_file($expected, "t/tmp/$package_name.pm"),
+	"Generate $package_name");
+#:}
 
+$package_name = 'VariableOverrideGlobalReadonly';#{:
 $generator = new Code::Generator::Perl(readonly => 1, outdir => 't/tmp');
-$package_name = 'VariableOverrideGlobalReadonly';
 ok($generator
 	->new_package($package_name)
 	->add_comment('This should be readonly')
@@ -264,10 +281,12 @@ our \$twenty = 20;
 
 1;
 EOT
-ok (compare_with_file($expected, "t/tmp/$package_name.pm"), "Generate $package_name");
+ok (compare_with_file($expected, "t/tmp/$package_name.pm"),
+	"Generate $package_name");
+#:}
 
+$package_name = 'PackageOverrideGlobalReadonly';#{:
 $generator = new Code::Generator::Perl(readonly => 1, outdir => 't/tmp');
-$package_name = 'PackageOverrideGlobalReadonly';
 ok($generator
 	->new_package($package_name, readonly => 0)
 	->add_comment('This should not be readonly')
@@ -294,4 +313,30 @@ our \$twenty = 20;
 
 1;
 EOT
-ok (compare_with_file($expected, "t/tmp/$package_name.pm"), "Generate $package_name");
+ok (compare_with_file($expected, "t/tmp/$package_name.pm"),
+	"Generate $package_name");
+#:}
+
+$package_name = 'CreateVerbose'; #{:
+my $message = `perl -Mblib -MCode::Generator::Perl -e '
+new Code::Generator::Perl(outdir => "t/tmp")
+  ->new_package("$package_name")
+  ->add(pi => 3.14)
+  ->create( { verbose => 1 } );
+'`;
+chomp $message;
+ok ($message eq "t/tmp/$package_name.pm", "$package_name");
+#:}
+
+$package_name = 'CreateOrDieVerbose'; #{:
+$message = `perl -Mblib -MCode::Generator::Perl -e '
+new Code::Generator::Perl(outdir => "t/tmp")
+  ->new_package("$package_name")
+  ->add(pi => 3.14)
+  ->create_or_die( "die message", { verbose => 1 } );
+'`;
+chomp $message;
+ok ($message eq "t/tmp/$package_name.pm", "$package_name");
+#:}
+
+# vim:fdm=marker foldmarker={\:,\:}:

@@ -6,13 +6,15 @@ use warnings;
 use Data::Dumper;
 use Carp;
 use File::Spec::Functions;
+use File::Path qw(make_path);
 
 my %packages_created;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03'; # Don't forget to update the one in POD too!
 
 sub new {
 	my ($class, %details) = @_;
+
 	my $self = {};
 	$self->{outdir} = $details{outdir} || '.';
 	$self->{base_package} = $details{base_package};
@@ -43,12 +45,14 @@ sub _init_use {
 
 sub use {
 	my ($self, @packages) = @_;
+
 	map { $self->_add_if_not_yet_used($_) } @packages;
 	return $self;
 }
 
 sub _add_if_not_yet_used {
     my ($self, $package) = @_;
+
     if (! grep { /$package/ } @{$self->{use}}) {
 	push @{$self->{use}}, $package;
     }
@@ -56,6 +60,7 @@ sub _add_if_not_yet_used {
 
 sub new_package {
 	my ($self, $package_name, %details) = @_;
+
 	$self->{package} = $package_name
 		|| die "new_package: Missing package name";
 	$self->{outdir} = $details{outdir} || $self->{outdir};
@@ -81,12 +86,14 @@ sub new_package {
 
 sub add_comment {
 	my ($self, @comments) = @_;
+
 	$self->_add_content("# " . join("\n# ", @comments));
 	return $self;
 }
 
 sub add {
 	my ($self, $name, $value, $options) = @_;
+
 	local $Data::Dumper::Indent = 1;
 	local $Data::Dumper::Purity = 1;
 	local $Data::Dumper::Deepcopy = 0;
@@ -113,10 +120,11 @@ sub add {
 
 sub _add_content {
 	my ($self, $content) = @_;
+
 	push @{$self->{content}}, $content;
 }
 
-sub get_line_printer_for {
+sub _get_line_printer_for {
 	my ($filename) = @_;
 
 	open my $file, ">$filename" or die "Could not open $filename\n";
@@ -133,10 +141,37 @@ sub get_line_printer_for {
 	);
 }
 
-sub create {
+sub _create_directory_or_die {
+	my ($outdir) = @_;
+
+	make_path($outdir, { error => \my $errors });
+	if (@$errors) {
+	    for my $diag (@$errors) {
+		my ($dir, $message) = %$diag;
+		# At most we're creating only one path so dying
+		# immediately is all dandy here. Should be no problem
+		# for immortals like us.
+		die "Error creating output directory '$outdir': $message";
+	    }
+	}
+}
+
+sub _get_outdir_and_filename {
 	my ($self) = @_;
 
 	my $outdir = $self->{outdir};
+	my @dir = split('::', $self->{package});
+	my $filename = pop @dir;
+
+	$outdir = catfile($outdir, @dir);
+	$filename = catfile($outdir, $filename . '.pm');
+
+	return ($outdir, $filename);
+}
+
+sub create {
+	my ($self, $options) = @_;
+
 	my $package = $self->{package};
 	if ($packages_created{$package}) {
 		croak join("\n",
@@ -147,16 +182,13 @@ sub create {
 	}
 	$packages_created{$package} = 1;
 
-	my @dir = split('::', $self->{package});
-	my $filename = pop @dir;
-	$outdir = catfile($outdir, @dir);
-	$filename = catfile($outdir, $filename . '.pm');
+	my ($outdir, $filename) = $self->_get_outdir_and_filename();
 
 	if (! -d $outdir) {
-		`mkdir -p $outdir`;
+		_create_directory_or_die($outdir);
 	}
 
-	my ($print_line, $done)= get_line_printer_for($filename);
+	my ($print_line, $done)= _get_line_printer_for($filename);
 	$print_line->("package $package;");
 	$print_line->();
 
@@ -175,28 +207,30 @@ sub create {
 
 	$print_line->('1;');
 	$done->();
-	return $self->_verify_package($package, $filename);
+	return $self->_verify_package($package, $filename, $options);
 }
 
 sub _verify_package {
-	my ($self, $package, $filename) = @_;
+	my ($self, $package, $filename, $options) = @_;
+
 	eval "use lib '" . $self->{outdir} . "';";
 	eval "use $package;";
 	if ($@) {
 		warn "Error while generating $filename:\n\t$@";
 		return 0;
 	} else {
-		if ($ENV{verbose}) {
-			print STDERR "$filename\n";
+		if ($options->{verbose}) {
+			print "$filename\n";
 		}
 	}
 	return 1;
 }
 
 sub create_or_die {
-	my ($self, $die_message) = shift;
+	my ($self, $die_message, $options) = @_;
+
 	$die_message ||= '';
-	if (! $self->create()) {
+	if (! $self->create($options)) {
 		die "$die_message $!";
 	}
 }
@@ -207,20 +241,22 @@ __END__
 
 Code::Generator::Perl - Perl module for generating perl modules
 
+=head1 VERSION
+
+0.03
+
 =head1 SYNOPSIS
 
   use Code::Generator::Perl;
 
-  my $generator = new Code::Generator::Perl(
-			generated_by => 'somescript.pl',
-  );
+  my $generator = new Code::Generator::Perl(generated_by => 'somescript.pl');
 
   my @fib_sequence = ( 1, 1, 2, 3, 5, 8 );
 
-  $generator->new_package('Fibonacci');
+  $generator->new_package( 'Fibonacci' );
 
-  $generator->add_comment('Single digit fibonacci numbers');
-  $generator->add(fib_sequence => \@fib_sequence);
+  $generator->add_comment( 'Single digit fibonacci numbers' );
+  $generator->add( fib_sequence => \@fib_sequence );
   $generator->create_or_die();
   # This will generate the file Fibonacci.pm:
   #
@@ -245,7 +281,7 @@ Code::Generator::Perl - Perl module for generating perl modules
   #     1;
 
   my @single_digit_numbers = ( 1..9 );
-  $generator->new_package('Number::Single::Digit');
+  $generator->new_package( 'Number::Single::Digit' );
   $generator->add(single_digits => \@single_digit_numbers);
 
   # Generates Number/Single/Digit.pm
@@ -256,7 +292,7 @@ Code::Generator::Perl - Perl module for generating perl modules
 Code::Generator::Perl generates perl modules for you.
 
 The idea is that you specify the module name and what variables it has and it
-will spit out the .pm files for you, using Data::Dumper to do the actual
+will spit out the .pm files for you, using I<Data::Dumper> to do the actual
 nitty-gritty work.
 
 It was born out of the need to generate perl modules for representing static
@@ -269,90 +305,122 @@ joins to come up with the same data.
 
 =over 4
 
-=item new(option => value, ...)
+=item I<new>( option => value, ... )
 
 Creates the generator object.  Available options are
 
 =over 4
 
-=item outdir
+=item I<outdir>
 
 Specifies the directory where the generated files will be saved to.
 
-=item base_package
+=item I<base_package>
 
 The base package to be prepended to the package name.
 
-=item readonly
+=item I<readonly>
 
 Set this to true if you would like all the variables in all the packages to be
 generated to be readonly. This requires the Readonly module. You can overide
 this in per-package or per-variable readonly option.
 
-=item generated_by
+=item I<generated_by>
 
 Set this to the name of your script so that people that view the generated file
 know which script generates your generated files.
 
 =back
 
-=item new_package('Package::Name', option => value, ...)
+=item I<new_package>( 'Package::Name', option => value, ... )
 
 Prepare the generator for creating a new package. Previous contents are cleared.
 Valid options are:
 
 =over 4
 
-=item outdir
+=item I<outdir>
 
 The output directory for this package.
 
-=item use
+=item I<use>
 
 An array ref to a list of other modules to use. By default 'strict' and
 'warnings' are included. Specify the 'nowarnings' and 'nostrict' if you don't
 want them (see below).
 
-=item nowarnings
+=item I<nowarnings>
 
 Exclude 'use warnings' if set to true.
 
-=item nostrict
+=item I<nostrict>
 
 Exclude 'use strict' if set to true.
 
-=item package_generated_by
+=item I<package_generated_by>
 
 Similar to 'generated_by' option to new but for this package only.
 
-=item base_package
+=item I<base_package>
 
 The base package name to be prepended to this package.
 
-=item package_readonly
+=item I<package_readonly>
 
 Set to 1 if you would like all variables in this package to be readonly.
 
 =back
 
-=item add_comment('some comment', 'another comment')
+=item I<add_comment>( 'some comment', 'another comment' )
 
 Add comments. They will be joined with newlines.
 
-=item add(variable_name => $ref, { option => value })
+=item I<add>( variable_name => $ref, { option => value } )
 
 Add a variable with the given name, pointing to $ref. Options are:
 
 =over 4
 
-=item sortkeys
+=item I<sortkeys>
 
 This value will be passed to I<$Data::Dumper::Sortkeys>. See the
-Data::Dumper documentation for how this value is used.
+L<Data::Dumper> documentation for how this value is used.
 
-=item readonly
+=item I<readonly>
 
 If set to 1 the variable will be set to readonly using the Readonly module.
+
+=back
+
+=item I<use>( 'Foo', 'Bar', ... )
+
+Add "use Foo;", "use Bar;" and so on to the package. It ensures that no
+packages are used twice.
+
+=item I<create>( { option => value } )
+
+Write the package into .pm file and try to 'use' it and warn if there is any
+syntax errors. Options:
+
+=over 4
+
+=item I<verbose>
+
+If set to true the package filename is printed to stdout.
+
+=back
+
+=item I<create_or_die>( $die_message, { option => value } )
+
+Same like I<create>() but die on any syntax error in the created package.
+If given, I<$die_message> will be printed if the package fails perl's eval.
+Options:
+
+=over 4
+
+=item I<verbose>
+
+If set to true the package filename is printed to stdout.
 
 =back
 
@@ -360,7 +428,7 @@ If set to 1 the variable will be set to readonly using the Readonly module.
 
 =head1 SEE ALSO
 
-Data::Dumper
+L<Data::Dumper>
 
 =head1 AUTHOR
 
